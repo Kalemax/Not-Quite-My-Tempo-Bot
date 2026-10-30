@@ -1,0 +1,13 @@
+# Project pitch and pin diagram (kept local, not published)
+zzDiscoveryProject_Pitch_Kale.pdf
+ESP32_pin_diagram.png
+
+# Python junk
+__pycache__/
+*.pyc
+.venv/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
