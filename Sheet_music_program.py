@@ -41,6 +41,5 @@ print("Starting beat of each measure: " + str(measureStartingBeats))
 # This saves the info to a file that will be sent to the esp32 to be used in the program
 with open(folder / "Project_program" / "data" / "piece.txt", "w") as f:
     f.write(str(beatsPerMeasure) + "\n")
-    f.write(str(numMeasures) + "\n")
     f.write(",".join(str(b) for b in measureStartingBeats) + "\n")
     f.write(",".join(str(b) for b in noteOffsets) + "\n")
