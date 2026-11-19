@@ -19,11 +19,15 @@
 #define CENTER_PIN 21
 #define DOWN_PIN 20
 #define PIEZO_PIN 1
+#define BUZZER_PIN 10
+
+//Defines how long each click of the metronome is in ms
+#define CLICK_LENGTH 30
 
 //Defines the size of arrays (any piece with this amount of beats or fewer is valid)
 #define MAX_ITEMS 1600
 
-//Piezo stuff
+//Piezo disc stuff for inputting sound
 #define THRESHOLD 100 //Threshold voltage that the piezo should read as a hit
 #define TIME_GAP 40 //If another hit is read after a hit within this many milliseconds, it does not count
 bool hit = false;
@@ -55,7 +59,6 @@ float noteOffsets[MAX_ITEMS];
 int noteCount = 0;
 //Declared after tempo and measure selection
 float msPerBeat; //Holds how many ms pass in each beat
-float countOff; //Holds the amount of time to wait for the countoff before recording
 float totalBeats; //Holds total amount of beats based on the measure selection
 
 //Time measurements
@@ -91,6 +94,10 @@ void setup() {
   pinMode(DOWN_PIN, INPUT_PULLUP);
   pinMode(CENTER_PIN, INPUT_PULLUP);
 
+  //Sets up the buzzer output for the metronome ticking
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, HIGH);
+
   //Displays an error message in the console if the display is not found
   if (!display.begin(OLED_ADDR, true)) {
     Serial.println("OLED not found");
@@ -99,7 +106,8 @@ void setup() {
   LittleFS.begin(true); //Initializes the internal storage in the ESP32
   
   //Loads the data from the piece into the program
-  loadPiece();
+  loadPiece(); //Note that if you want to change the piece, you have to run the LittleFS Upload again with your new piece.txt file
+  Serial.println(maxMeasures); //test
 
   //Starts by allowing the user to choose the tempo they want to play at
   displayBpm();
@@ -123,10 +131,16 @@ void loop() {
       hitCount = 0;
       lastHit = false;
       msPerBeat = 60000.0 / bpm; //Holds how many milliseconds are in a beat at the selected bpm
-      countOff = msPerBeat * beatsPerMeasure; //Calculates how many ms the count off is
       totalBeats = (measures < maxMeasures) ? measureStarts[measures] : measureStarts[maxMeasures - 1] + beatsPerMeasure; //Calculates total number of beats
+
+      //Count off before recording starts
+      for(int i = 0; i < beatsPerMeasure; i++){
+        digitalWrite(BUZZER_PIN, LOW); //Low signal starts beep
+        delay(CLICK_LENGTH);
+        digitalWrite(BUZZER_PIN, HIGH); //Stops beep very quickly after to sound like a click
+        delay(msPerBeat);
+      }
       displayRecording();
-      delay(countOff); //Gives time for the countoff before hits are detected
       recording = true;
       measureSelect = false;
       startTime = millis();
@@ -161,6 +175,7 @@ void loop() {
     currentTime = millis() - startTime;
     if(hit && !lastHit && millis() - lastHitTime > TIME_GAP && hitCount < MAX_ITEMS){
       lastHitTime = millis();
+      //Adds a new time to hit times
       hitTimes[hitCount++] = currentTime;
       //Displays hit count and times for testing purposes
       Serial.print(hitCount);
@@ -174,9 +189,11 @@ void loop() {
       //Loops through list and finds difference between expected and actual ms value for each hit (clean up later)
       float difference;
       for (int i = 0; i < hitCount && i < noteCount; i++) {
-        difference = hitTimes[i] - (noteOffsets[i] * msPerBeat);
-        Serial.print(difference);
-        Serial.print(", ");
+        difference = hitTimes[i] - (noteOffsets[i] * msPerBeat); //Actual minus expected; positive difference means late, negative means early
+        Serial.print("Expected: ");
+        Serial.println(noteOffsets[i] * msPerBeat);
+        Serial.print("Difference: ");
+        Serial.println(difference);
       }
       Serial.println();
       displayFeedback();
@@ -196,7 +213,7 @@ void loadPiece(){
     displayError();
     while (true) delay(10); //Stops program from running if no piece is found
   }
-  //Reads the numbers on line 1 of piece.txt
+  //Reads the numbers on line 1 of piece.txt (how many quarter note beats are in a typical measure)
   beatsPerMeasure = pieceFile.readStringUntil('\n').toFloat();
 
   //Reads the lists on lines 2 and 3 and turns them into arrays of floats
@@ -253,6 +270,7 @@ void displayRecording(){
   display.display();
 }
 
+//Determines what feedback to give then displays it on the screen
 void displayFeedback(){
   display.clearDisplay();
   display.setTextSize(2);

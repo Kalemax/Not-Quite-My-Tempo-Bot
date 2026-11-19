@@ -5,7 +5,7 @@ from pathlib import Path #Helps with file paths
 folder = Path(__file__).parent
 
 # Works with .mxl, .musicxml, .xml, and .mid files
-score = converter.parse(folder / "farewell_waltz.mid") #Input the piece here after folder
+score = converter.parse(folder / "Discovery_project_test.mxl") #Input the piece here after folder
 
 score = score.stripTies()          # A tied note counts once
 
