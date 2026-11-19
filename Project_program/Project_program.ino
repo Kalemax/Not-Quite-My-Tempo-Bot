@@ -67,7 +67,16 @@ unsigned long startTime; //Holds the time when recording starts after measure/te
 unsigned long currentTime;
 unsigned long hitTimes[MAX_ITEMS]; //A hit is when the piezo picks up a note, so this array stores the time in ms everytime that happens since the start of recording
 
+//Used to calculate how much the user was rushing or dragging
+float absSum;
+float signedSum;
+float avgAbs;
+float avgSigned;
+float errorMargin; //How off the average note has to be for it to be considered not on tempo
+float biasMargin; //How lopsided (between early and late) the average note has to be for it to be considered rushing/dragging
 
+
+String feedback; //Will hold the feedback message that is displayed after recording
 //Allows the list to be converted into floats rather than a long string of numbers
 int parseFloats(String line, float arr[], int maxLen) {
   int count = 0;
@@ -94,6 +103,10 @@ void setup() {
   pinMode(DOWN_PIN, INPUT_PULLUP);
   pinMode(CENTER_PIN, INPUT_PULLUP);
 
+  //Makes piezo disc more sensitive
+
+  analogSetPinAttenuation(PIEZO_PIN, ADC_0db);
+  
   //Sets up the buzzer output for the metronome ticking
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, HIGH);
@@ -127,12 +140,14 @@ void loop() {
       measureSelect = true;
       tempoSelect = false;
     }else if(measureSelect){
-      //When this goes through, the recording will start 
+      //When this goes through, the recording will start, so all values should be reset
       hitCount = 0;
+      absSum = 0;
+      signedSum = 0;
       lastHit = false;
       msPerBeat = 60000.0 / bpm; //Holds how many milliseconds are in a beat at the selected bpm
       totalBeats = (measures < maxMeasures) ? measureStarts[measures] : measureStarts[maxMeasures - 1] + beatsPerMeasure; //Calculates total number of beats
-
+      measureSelect = false;
       //Count off before recording starts
       for(int i = 0; i < beatsPerMeasure; i++){
         digitalWrite(BUZZER_PIN, LOW); //Low signal starts beep
@@ -142,7 +157,6 @@ void loop() {
       }
       displayRecording();
       recording = true;
-      measureSelect = false;
       startTime = millis();
     }
   }
@@ -171,8 +185,8 @@ void loop() {
 
   if(recording){
     int piezoReading = analogRead(PIEZO_PIN);
-    hit = (piezoReading > THRESHOLD);
-    currentTime = millis() - startTime;
+    hit = (piezoReading > THRESHOLD); //Counts a hit if the piezo disc picks up a high enough signal
+    currentTime = millis() - startTime; //Starts the time from right after the count off
     if(hit && !lastHit && millis() - lastHitTime > TIME_GAP && hitCount < MAX_ITEMS){
       lastHitTime = millis();
       //Adds a new time to hit times
@@ -183,17 +197,48 @@ void loop() {
       Serial.println(currentTime);
     }
     lastHit = hit;
+
+    //Stops recording after the time of the selected measures has passed
     if(currentTime >= totalBeats * msPerBeat){
       recording = false;
 
-      //Loops through list and finds difference between expected and actual ms value for each hit (clean up later)
+      //Beeps when recording is done
+      digitalWrite(BUZZER_PIN, LOW);
+      delay(400);
+      digitalWrite(BUZZER_PIN, HIGH);
+
+      //Loops through list and finds difference between expected and actual ms value for each hit
       float difference;
       for (int i = 0; i < hitCount && i < noteCount; i++) {
         difference = hitTimes[i] - (noteOffsets[i] * msPerBeat); //Actual minus expected; positive difference means late, negative means early
+        //Adds the differences to the signed/unsigned sums
+        absSum += fabs(difference);
+        signedSum += difference;
+        
+        //Prints results
         Serial.print("Expected: ");
         Serial.println(noteOffsets[i] * msPerBeat);
         Serial.print("Difference: ");
         Serial.println(difference);
+      }
+
+      //Takes average of how off user is
+      float avgAbs = absSum / hitCount;
+      float avgSigned = signedSum / hitCount;
+
+      errorMargin = 0.10 * msPerBeat;
+      biasMargin = 0.05 * msPerBeat;
+
+      if(hitCount == 0){
+        feedback = "No notes  detected"; //The extra space is there on purpose so it will fit on the screen
+      }else if (avgAbs <= errorMargin) {
+        feedback = "Good!"; //Relatively on tempo
+      }else if (avgSigned > biasMargin) {
+        feedback = "Dragging!"; //Playing too late
+      }else if (avgSigned < -biasMargin) {
+        feedback = "Rushing!"; //Playing too early
+      }else {
+        feedback = "NOT MY TEMPO!"; //Tempo is all over the place
       }
       Serial.println();
       displayFeedback();
@@ -276,7 +321,7 @@ void displayFeedback(){
   display.setTextSize(2);
   display.setTextColor(SH110X_WHITE);
   display.setCursor(0, 0);
-  display.print("Done!"); //Make this display actual feedback later
+  display.print(feedback); //Displays feedback message
   display.display();
 }
 
